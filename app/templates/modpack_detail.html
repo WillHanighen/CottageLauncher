@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+<div x-data='modpackDetail()' x-init='init()' class="flex items-start gap-8">
+  <div class="flex-1 min-w-0">
+    <!-- Header -->
+    <div class="flex items-center gap-4">
+      <img src="{{ project.icon_url or '/static/placeholder.svg' }}" alt="icon" class="w-16 h-16 rounded"/>
+      <div>
+        <h1 class="text-2xl font-semibold">{{ project.title }}</h1>
+        <div class="text-slate-400 text-sm">
+          {{ project.project_type|capitalize }} • {{ project.downloads }} downloads
+          • <a class="underline hover:text-white" href="https://modrinth.com/{{ project.project_type }}/{{ project.slug or project.id }}" target="_blank" rel="noreferrer noopener">View on Modrinth</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="mt-6 border-b border-slate-800">
+      <nav class="flex gap-2" aria-label="Tabs">
+        <button @click="tab='about'" :class="tab==='about' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">About</button>
+        <button @click="tab='media'" :class="tab==='media' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">Media</button>
+        <button @click="tab='downloads'" :class="tab==='downloads' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">Downloads</button>
+      </nav>
+    </div>
+
+    <!-- About Tab -->
+    <section x-show="tab==='about'" class="mt-4">
+      <div id="about-body" class="prose prose-invert max-w-none" x-html="aboutHtml"></div>
+    </section>
+
+    <!-- Media Tab -->
+    <section x-show="tab==='media'" class="mt-4">
+      {% if project.gallery and project.gallery|length > 0 %}
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for item in project.gallery %}
+          <a href="{{ item.url }}" target="_blank" rel="noreferrer noopener" class="block">
+            <img src="{{ item.url }}" alt="media" class="w-full h-48 object-cover rounded-md border border-slate-800"/>
+          </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-slate-400">No media available.</div>
+      {% endif %}
+    </section>
+
+    <!-- Downloads Tab -->
+    <section x-show="tab==='downloads'" class="mt-4">
+      <div class="flex flex-wrap gap-3 items-end">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Loader</label>
+          <select x-model="filters.loader" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+            <option value="">All</option>
+            <template x-for="opt in options.loaders" :key="opt">
+              <option :value="opt" x-text="opt"></option>
+            </template>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Minecraft</label>
+          <select x-model="filters.mc" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+            <option value="">All</option>
+            <template x-for="opt in options.mc" :key="opt">
+              <option :value="opt" x-text="opt"></option>
+            </template>
+          </select>
+        </div>
+        <div class="ml-auto">
+          <label class="block text-xs text-slate-400 mb-1">Sort</label>
+          <select x-model="sortBy" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+            <option value="published_desc">Newest</option>
+            <option value="published_asc">Oldest</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-3 divide-y divide-slate-800 border border-slate-800 rounded-md overflow-hidden">
+        <template x-for="v in filteredVersions()" :key="v.id">
+          <div class="p-4 flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="font-medium" x-text="v.version_number"></div>
+              <div class="text-sm text-slate-400">
+                <span x-text="(v.date_published || '').slice(0,10)"></span>
+                • Loaders: <span x-text="(v.loaders || []).join(', ')"></span>
+                • MC: <span x-text="(v.game_versions || []).join(', ')"></span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <template x-if="(v.files || []).length > 0 && v.files[0].url">
+                <a :href="v.files[0].url" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm" download>
+                  <span x-text="'Download ' + (v.files[0].filename || 'File')"></span>
+                </a>
+              </template>
+              <template x-if="!(v.files || []).length || !v.files[0].url">
+                <a :href="`https://modrinth.com/{{ project.project_type }}/{{ project.slug or project.id }}/version/${v.id}`" target="_blank" rel="noreferrer noopener" class="px-3 py-1.5 rounded bg-slate-700 hover:bg-slate-600 text-white text-sm">
+                  View on Modrinth
+                </a>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+  </div>
+
+  <!-- Sidebar -->
+  <aside class="w-80 hidden lg:block">
+    <div class="sticky top-6 space-y-4">
+      <div class="border border-slate-800 rounded-md p-4">
+        <div class="text-slate-400 text-sm">Project ID</div>
+        <div class="font-mono text-sm break-all">{{ project.id }}</div>
+      </div>
+      {% if project.gallery and project.gallery|length > 0 %}
+      <div class="border border-slate-800 rounded-md overflow-hidden">
+        <img src="{{ project.gallery[0].url }}" alt="cover" class="w-full h-40 object-cover"/>
+      </div>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+<!-- Marked.js for Markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+function modpackDetail() {
+  return {
+    tab: 'about',
+    aboutHtml: '',
+    sortBy: 'published_desc',
+    filters: { loader: '', mc: '' },
+    options: { loaders: [], mc: [] },
+    versions: {{ versions|tojson }},
+    init() {
+      // Build filter options
+      const loaders = new Set();
+      const mc = new Set();
+      for (const v of this.versions) {
+        (v.loaders || []).forEach(l => loaders.add(l));
+        (v.game_versions || []).forEach(g => mc.add(g));
+      }
+      this.options.loaders = Array.from(loaders).sort();
+      this.options.mc = Array.from(mc).sort().reverse();
+
+      // Render Markdown body
+      const markdownSrc = {{ (project.body or project.description or '')|tojson }};
+      try { this.aboutHtml = window.marked.parse(markdownSrc || ''); }
+      catch { this.aboutHtml = markdownSrc || ''; }
+      // After rendering, ensure all links in the description open in a new tab
+      this.$nextTick(() => {
+        const container = this.$root.querySelector('#about-body');
+        if (!container) return;
+        container.querySelectorAll('a').forEach(a => {
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noreferrer noopener');
+        });
+      });
+    },
+    filteredVersions() {
+      let arr = this.versions.slice();
+      if (this.filters.loader) {
+        arr = arr.filter(v => (v.loaders || []).includes(this.filters.loader));
+      }
+      if (this.filters.mc) {
+        arr = arr.filter(v => (v.game_versions || []).includes(this.filters.mc));
+      }
+      if (this.sortBy === 'published_desc') {
+        arr.sort((a,b) => new Date(b.date_published || 0) - new Date(a.date_published || 0));
+      } else if (this.sortBy === 'published_asc') {
+        arr.sort((a,b) => new Date(a.date_published || 0) - new Date(b.date_published || 0));
+      }
+      return arr;
+    }
+  }
+}
+</script>
+{% endblock %}

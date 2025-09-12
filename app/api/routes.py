@@ -43,9 +43,40 @@ async def browse_search(request: Request, q: str = Query("")):
     )
 
 
+@router.get("/browse/featured_modpacks", response_class=HTMLResponse)
+async def featured_modpacks(request: Request, limit: int = Query(9, ge=1, le=50)):
+    settings = get_settings()
+    async with ModrinthClient(user_agent=settings.modrinth_user_agent) as client:
+        projects = await client.discover_modpacks(limit=limit)
+    return templates.TemplateResponse(
+        "components/project_list.html",
+        {"request": request, "projects": projects, "query": ""},
+    )
+
+
 @router.get("/api/projects/{project_id}")
 async def get_project(project_id: str):
     settings = get_settings()
     async with ModrinthClient(user_agent=settings.modrinth_user_agent) as client:
         data = await client.get_project(project_id)
     return JSONResponse(data)
+
+
+@router.get("/api/projects/{project_id}/versions")
+async def get_project_versions(project_id: str):
+    settings = get_settings()
+    async with ModrinthClient(user_agent=settings.modrinth_user_agent) as client:
+        data = await client.get_project_versions(project_id)
+    return JSONResponse(data)
+
+
+@router.get("/modpacks/{id_or_slug}", response_class=HTMLResponse)
+async def modpack_detail_page(request: Request, id_or_slug: str):
+    settings = get_settings()
+    async with ModrinthClient(user_agent=settings.modrinth_user_agent) as client:
+        project = await client.get_project(id_or_slug)
+        versions = await client.get_project_versions(id_or_slug)
+    return templates.TemplateResponse(
+        "modpack_detail.html",
+        {"request": request, "project": project, "versions": versions},
+    )

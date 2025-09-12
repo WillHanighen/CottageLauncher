@@ -4,20 +4,34 @@
   <h1 class="text-2xl font-semibold">Browse Mods & Modpacks</h1>
 </div>
 
-<div class="mt-4">
-  <form id="search-form" class="relative max-w-xl">
+<div class="mt-4" x-data="{ q: '' }">
+  <form id="search-form" class="relative max-w-xl"
+        action="/browse/search" method="GET"
+        x-on:submit.prevent
+        hx-get="/browse/search"
+        hx-trigger="submit, keyup changed delay:400ms from:#search-input"
+        hx-target="#results"
+        hx-include="#search-form"
+        hx-push-url="true">
     <input
+      id="search-input"
       type="text"
       name="q"
       placeholder="Search Modrinth..."
       class="w-full rounded-md bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-      hx-get="/browse/search"
-      hx-trigger="keyup changed delay:400ms from:closest form"
-      hx-target="#results"
-      hx-include="#search-form"
       autocomplete="off"
+      x-model="q"
     />
   </form>
+
+  <div class="mt-6" x-show="q.length === 0">
+    <div class="flex items-center justify-between">
+      <h2 class="text-xl font-semibold">Featured Modpacks</h2>
+    </div>
+    <div id="featured-modpacks" class="mt-3" hx-get="/browse/featured_modpacks" hx-trigger="load">
+      <div class="text-slate-400">Loading featured modpacks…</div>
+    </div>
+  </div>
 </div>
 
 <div id="results" class="mt-6">
