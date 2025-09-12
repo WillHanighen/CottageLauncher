@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Env
+.env
+.venv/
+!.venv.example
+
+# Byte-compiled / compiled
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+.cursor/
+.cursor/
+
+# OS because microsoft sucks
+.DS_Store
+
+# Build
+dist/
+build/
+
+# Caches
+*.cache/
+.mypy_cache/
+.pytest_cache/

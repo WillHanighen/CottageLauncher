@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cottage Launcher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="icon" href="/static/placeholder.svg" />
+  </head>
+  <body class="bg-slate-900 text-slate-100">
+    <div class="min-h-screen flex flex-col">
+      <header class="border-b border-slate-800 bg-slate-900/70 backdrop-blur">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <a href="/" class="text-xl font-semibold">Cottage Launcher</a>
+          <nav class="flex items-center gap-6 text-slate-300">
+            <a href="/" class="hover:text-white">Browse</a>
+            <a href="/modpacks" class="hover:text-white">Modpacks</a>
+            <a href="/installed" class="hover:text-white">Installed</a>
+            <a href="/settings" class="hover:text-white">Settings</a>
+          </nav>
+        </div>
+      </header>
+
+      <main class="flex-1">
+        <div class="max-w-7xl mx-auto px-4 py-6">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+
+      <footer class="border-t border-slate-800 text-sm text-slate-400">
+        <div class="max-w-7xl mx-auto px-4 py-4">Made with ♥ by Cottage</div>
+      </footer>
+    </div>
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>

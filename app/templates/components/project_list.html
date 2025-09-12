@@ -1,0 +1,22 @@
+{% if projects and projects|length > 0 %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for p in projects %}
+  <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
+    <div class="flex items-center gap-3 p-4">
+      <img src="{{ p.icon_url or '/static/placeholder.svg' }}" alt="icon" class="w-10 h-10 rounded"/>
+      <div>
+        <div class="font-medium">{{ p.title }}</div>
+        <div class="text-xs text-slate-400">{{ p.project_type|capitalize }} • {{ p.downloads }} downloads</div>
+      </div>
+    </div>
+    <div class="px-4 pb-4 text-sm text-slate-300 line-clamp-3">{{ p.description }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+  {% if query %}
+  <div class="text-slate-400">No results for "{{ query }}"</div>
+  {% else %}
+  <div class="text-slate-400">Start typing to search.</div>
+  {% endif %}
+{% endif %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between">
+  <h1 class="text-2xl font-semibold">Browse Mods & Modpacks</h1>
+</div>
+
+<div class="mt-4">
+  <form id="search-form" class="relative max-w-xl">
+    <input
+      type="text"
+      name="q"
+      placeholder="Search Modrinth..."
+      class="w-full rounded-md bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      hx-get="/browse/search"
+      hx-trigger="keyup changed delay:400ms from:closest form"
+      hx-target="#results"
+      hx-include="#search-form"
+      autocomplete="off"
+    />
+  </form>
+</div>
+
+<div id="results" class="mt-6">
+  <div class="text-slate-400">Type to search Modrinth projects.</div>
+</div>
+{% endblock %}
