@@ -32,3 +32,11 @@ build/
 *.cache/
 .mypy_cache/
 .pytest_cache/
+
+# Node / Electron
+desktop/electron/node_modules/
+desktop/electron/package-lock.json
+desktop/electron/yarn.lock
+desktop/electron/pnpm-lock.yaml
+desktop/electron/dist/
+desktop/electron/out/

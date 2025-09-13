@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    dev_mode: bool = False
 
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/cottage_launcher"

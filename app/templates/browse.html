@@ -4,27 +4,68 @@
   <h1 class="text-2xl font-semibold">Browse Mods & Modpacks</h1>
 </div>
 
-<div class="mt-4" x-data="{ q: '' }">
-  <form id="search-form" class="relative max-w-xl"
+<div class="mt-4" x-data="{ q: '', type: '', loader: '', mc: '', index: 'relevance' }">
+  <form id="search-form" class="relative"
         action="/browse/search" method="GET"
         x-on:submit.prevent
         hx-get="/browse/search"
-        hx-trigger="submit, keyup changed delay:400ms from:#search-input"
+        hx-trigger="submit, change, keyup changed delay:400ms"
         hx-target="#results"
         hx-include="#search-form"
         hx-push-url="true">
-    <input
-      id="search-input"
-      type="text"
-      name="q"
-      placeholder="Search Modrinth..."
-      class="w-full rounded-md bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-      autocomplete="off"
-      x-model="q"
-    />
+    <div class="max-w-7xl">
+      <div class="flex flex-col gap-3">
+        <input
+          id="search-input"
+          type="text"
+          name="q"
+          placeholder="Search Modrinth..."
+          class="w-full rounded-md bg-slate-800 border border-slate-700 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          autocomplete="off"
+          x-model="q"
+        />
+        <div class="flex flex-wrap items-end gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Type</label>
+            <select name="type" x-model="type" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+              <option value="">All</option>
+              <option value="mod">Mod</option>
+              <option value="modpack">Modpack</option>
+              <option value="resourcepack">Resource Pack</option>
+              <option value="shader">Shader</option>
+              <option value="datapack">Datapack</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Loader</label>
+            <select name="loader" x-model="loader" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+              <option value="">All</option>
+              <option value="fabric">Fabric</option>
+              <option value="forge">Forge</option>
+              <option value="quilt">Quilt</option>
+              <option value="neoforge">NeoForge</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Minecraft</label>
+            <input name="mc" x-model="mc" type="text" placeholder="e.g. 1.20.1" class="w-32 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm" />
+          </div>
+          <div class="ml-auto">
+            <label class="block text-xs text-slate-400 mb-1">Sort</label>
+            <select name="index" x-model="index" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+              <option value="relevance">Relevance</option>
+              <option value="downloads">Downloads</option>
+              <option value="follows">Follows</option>
+              <option value="newest">Newest</option>
+              <option value="updated">Recently Updated</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
   </form>
 
-  <div class="mt-6" x-show="q.length === 0">
+  <div class="mt-6" x-show="q.length === 0 && (!type || type === 'modpack') && !loader && !mc">
     <div class="flex items-center justify-between">
       <h2 class="text-xl font-semibold">Featured Modpacks</h2>
     </div>

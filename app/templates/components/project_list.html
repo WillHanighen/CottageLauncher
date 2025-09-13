@@ -6,9 +6,9 @@
     {% set target = '_self' %}
     {% set rel = '' %}
   {% else %}
-    {% set href = 'https://modrinth.com/' ~ p.project_type ~ '/' ~ (p.slug or p.project_id) %}
-    {% set target = '_blank' %}
-    {% set rel = 'noreferrer noopener' %}
+    {% set href = '/projects/' ~ (p.slug or p.project_id) %}
+    {% set target = '_self' %}
+    {% set rel = '' %}
   {% endif %}
   <a href="{{ href }}" target="{{ target }}" rel="{{ rel }}" class="block group">
     <div class="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden group-hover:border-slate-600 transition-colors">
