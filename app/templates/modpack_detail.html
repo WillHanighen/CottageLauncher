@@ -20,6 +20,7 @@
         <button @click="tab='about'" :class="tab==='about' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">About</button>
         <button @click="tab='media'" :class="tab==='media' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">Media</button>
         <button @click="tab='downloads'" :class="tab==='downloads' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">Downloads</button>
+        <button @click="tab='changelog'" :class="tab==='changelog' ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-800'" class="px-3 py-2 rounded-t-md text-sm">Changelog</button>
       </nav>
     </div>
 
@@ -100,6 +101,29 @@
         </template>
       </div>
     </section>
+
+    <!-- Changelog Tab -->
+    <section x-show="tab==='changelog'" class="mt-4">
+      <div class="flex flex-wrap items-end gap-3">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Version</label>
+          <select x-model="changelogVersionId" @change="renderChangelog()" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm">
+            <template x-for="v in sortedVersions()" :key="v.id">
+              <option :value="v.id" x-text="(v.version_number || 'Version') + ' • ' + ((v.date_published || '').slice(0,10))"></option>
+            </template>
+          </select>
+        </div>
+        <div class="ml-auto">
+          <template x-if="changelogVersionId">
+            <a :href="`https://modrinth.com/{{ project.project_type }}/{{ project.slug or project.id }}/version/${changelogVersionId}`" target="_blank" rel="noreferrer noopener" class="text-sm underline text-slate-300 hover:text-white">View on Modrinth</a>
+          </template>
+        </div>
+      </div>
+      <div id="changelog-body" class="prose prose-invert max-w-none mt-4" x-html="changelogHtml"></div>
+      <template x-if="!changelogHtml">
+        <div class="mt-4 text-slate-400">No changelog available for this version.</div>
+      </template>
+    </section>
   </div>
 
   <!-- Sidebar -->
@@ -118,6 +142,11 @@
   </aside>
 </div>
 
+<!-- Project data JSON for client-side -->
+<script id="project-json" type="application/json">
+  {{ {'versions': versions, 'about': (project.body or project.description or '')}|tojson }}
+</script>
+
 <!-- Marked.js for Markdown rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
@@ -128,8 +157,17 @@ function modpackDetail() {
     sortBy: 'published_desc',
     filters: { loader: '', mc: '' },
     options: { loaders: [], mc: [] },
-    versions: {{ versions|tojson }},
+    versions: [],
+    changelogVersionId: '',
+    changelogHtml: '',
     init() {
+      // Load initial data
+      const dataEl = document.getElementById('project-json');
+      let initialData = {};
+      try { initialData = JSON.parse(dataEl?.textContent || '{}'); }
+      catch (e) { initialData = {}; }
+      this.versions = Array.isArray(initialData.versions) ? initialData.versions : [];
+
       // Build filter options
       const loaders = new Set();
       const mc = new Set();
@@ -141,7 +179,7 @@ function modpackDetail() {
       this.options.mc = Array.from(mc).sort().reverse();
 
       // Render Markdown body
-      const markdownSrc = {{ (project.body or project.description or '')|tojson }};
+      const markdownSrc = initialData.about || '';
       try { this.aboutHtml = window.marked.parse(markdownSrc || ''); }
       catch { this.aboutHtml = markdownSrc || ''; }
       // After rendering, ensure all links in the description open in a new tab
@@ -153,6 +191,16 @@ function modpackDetail() {
           a.setAttribute('rel', 'noreferrer noopener');
         });
       });
+
+      // Default changelog selection
+      const sv = this.sortedVersions();
+      this.changelogVersionId = sv.length ? sv[0].id : '';
+      this.renderChangelog();
+    },
+    sortedVersions() {
+      let arr = (this.versions || []).slice();
+      arr.sort((a,b) => new Date(b.date_published || 0) - new Date(a.date_published || 0));
+      return arr;
     },
     filteredVersions() {
       let arr = this.versions.slice();
@@ -168,6 +216,20 @@ function modpackDetail() {
         arr.sort((a,b) => new Date(a.date_published || 0) - new Date(b.date_published || 0));
       }
       return arr;
+    },
+    renderChangelog() {
+      const v = (this.versions || []).find(x => x.id === this.changelogVersionId);
+      const src = v && v.changelog ? v.changelog : '';
+      try { this.changelogHtml = window.marked.parse(src || ''); }
+      catch { this.changelogHtml = src || ''; }
+      this.$nextTick(() => {
+        const container = this.$root.querySelector('#changelog-body');
+        if (!container) return;
+        container.querySelectorAll('a').forEach(a => {
+          a.setAttribute('target', '_blank');
+          a.setAttribute('rel', 'noreferrer noopener');
+        });
+      });
     }
   }
 }
