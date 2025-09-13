@@ -40,3 +40,7 @@ desktop/electron/yarn.lock
 desktop/electron/pnpm-lock.yaml
 desktop/electron/dist/
 desktop/electron/out/
+
+
+#temp/legacy issue cleanup
+0.17.2

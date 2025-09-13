@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="text-2xl font-semibold">Installed</h1>
-<p class="mt-2 text-slate-400">View installed profiles and mods. (Coming soon)</p>
+<div class="flex items-center justify-between">
+  <h1 class="text-2xl font-semibold">Installed</h1>
+  <button class="text-sm px-3 py-1.5 rounded border border-slate-700 hover:bg-slate-800"
+          hx-get="/api/instances" hx-target="#instances" hx-swap="innerHTML">Refresh</button>
+</div>
+<p class="mt-2 text-slate-400">Your installed modpack instances.</p>
+
+<div id="instances" class="mt-4"
+     hx-get="/api/instances" hx-trigger="load"
+>
+  <div class="text-slate-400">Loading…</div>
+</div>
 {% endblock %}
