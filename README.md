@@ -2,6 +2,10 @@
 
 A modern, clean Minecraft launcher with Modrinth integration. Backend is FastAPI (HTMX + Tailwind UI), with an Electron desktop wrapper for a native-like experience.
 
+## WARNING: THIS PROJECT WAS BUILT AND TESTED ON LINUX ONLY AND IS NOT DESIGNED FOR USE ON WINDOWS OR MACOS
+
+### it is unlikely this project will funciton on Windows and *may* work on Mac, but do not count on it
+
 ## Features
 
 - **Modpack install (.mrpack)** via Modrinth API
