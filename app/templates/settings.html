@@ -7,8 +7,10 @@
     <p class="text-sm text-slate-400">Configure Minecraft directory and Java runtime (future).</p>
   </div>
   <div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
-    <h2 class="font-semibold">Accounts</h2>
-    <p class="text-sm text-slate-400">Sign-in with Microsoft (future).</p>
+    <h2 class="font-semibold mb-2">Accounts</h2>
+    <div id="account-panel" hx-get="/settings/account-panel" hx-trigger="load" hx-swap="innerHTML">
+      <div class="text-sm text-slate-400">Loading account status…</div>
+    </div>
   </div>
 </div>
 {% endblock %}

@@ -75,7 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description="Cottage Launcher Desktop Wrapper")
     parser.add_argument("--no-server", action="store_true", help="Do not start the embedded FastAPI server")
     parser.add_argument("--host", default=settings.app_host, help="Host for the server (default from .env)")
-    parser.add_argument("--port", type=int, default=0, help="Port for the server (0 chooses a random free port)")
+    parser.add_argument("--port", type=int, default=settings.app_port, help="Port for the server (default from .env)")
     parser.add_argument("--url", default=None, help="Override URL to open in frontend (e.g., http://127.0.0.1:8000)")
     parser.add_argument("--electron-dir", default=str(ROOT_DIR / "desktop" / "electron"), help="Path to the Electron app directory (should contain package.json)")
     parser.add_argument("--electron-binary", default=None, help="Path to a packaged Electron binary (e.g., AppImage) to launch instead of development Electron")
@@ -84,7 +84,7 @@ def main():
 
     # Start backend server in a separate thread (unless attaching to existing server)
     if not args.no_server:
-        selected_port = args.port if args.port and args.port != 0 else find_free_port(args.host)
+        selected_port = args.port
         t = threading.Thread(target=run_server, args=(args.host, selected_port), daemon=True)
         t.start()
     else:

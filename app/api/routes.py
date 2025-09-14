@@ -15,7 +15,7 @@ import tarfile
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import APIRouter, Request, Query, BackgroundTasks, Form, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import httpx
@@ -27,6 +27,10 @@ try:
 except Exception:  # ImportError or other
     mll_install = None
     mll_command = None
+try:
+    from minecraft_launcher_lib import exceptions as mll_exc
+except Exception:
+    mll_exc = None
 try:
     from minecraft_launcher_lib.fabric import install_fabric as mll_install_fabric
 except Exception:
@@ -621,6 +625,31 @@ def _launch_instance_job(job_id: str, slug: str):
         java_feature = _required_java_feature_version(mc_ver)
         java = _ensure_adoptium_jre(java_feature, inst_dir)
 
+        # Require authenticated Microsoft account with Minecraft entitlement
+        settings = get_settings()
+        auth = _load_auth_payload()
+        if not auth:
+            raise RuntimeError("Microsoft account required. Please sign in on the Settings page.")
+        # Refresh token and verify entitlement
+        if ms_account and settings.ms_client_id and auth.get("refresh_token"):
+            try:
+                refreshed = ms_account.complete_refresh(settings.ms_client_id, None, None, auth["refresh_token"])  # type: ignore[index]
+                if isinstance(refreshed, dict):
+                    auth.update({
+                        "refresh_token": refreshed.get("refresh_token", auth.get("refresh_token")),
+                        "access_token": refreshed.get("access_token", auth.get("access_token")),
+                        "name": refreshed.get("name", auth.get("name")),
+                        "id": refreshed.get("id", auth.get("id")),
+                    })
+                    _save_auth_payload(auth)
+            except Exception as e:
+                raise RuntimeError(f"Authentication refresh failed: {e}")
+        username = (auth.get("name") or os.getenv("USER") or os.getenv("USERNAME") or "Player")  # type: ignore[union-attr]
+        uuid = auth.get("id")  # type: ignore[assignment]
+        access_token = auth.get("access_token")
+        if not (uuid and access_token):
+            raise RuntimeError("Invalid login data. Please sign out and sign in again.")
+
         if mll_install is None or mll_command is None:
             raise RuntimeError("minecraft-launcher-lib not available. Ensure it's installed (see requirements.txt).")
 
@@ -697,7 +726,7 @@ def _launch_instance_job(job_id: str, slug: str):
         if isinstance(installed_vid, str) and installed_vid:
             version_id = installed_vid
 
-        # 3) Fallback: try generic installer for the computed version_id
+        # 3) Final fallback: try generic installer for the computed version_id
         if not _version_exists(version_id):
             try:
                 mll_install.install_minecraft_version(version_id, str(MC_DIR), callback=callbacks)
@@ -734,11 +763,10 @@ def _launch_instance_job(job_id: str, slug: str):
             pass
 
         JOBS[job_id].update(message="Building launch command…", progress=96)
-        username = os.getenv("USER") or os.getenv("USERNAME") or "Player"
         opts = {
-            "username": username,
-            "uuid": str(uuid.uuid4()),
-            "token": "",
+            "username": str(username),
+            "uuid": str(uuid),
+            "token": str(access_token),
             "executablePath": str(java),
             "defaultExecutablePath": str(java),
             "gameDirectory": str(inst_dir),
@@ -759,6 +787,19 @@ def _launch_instance_job(job_id: str, slug: str):
 
 @router.post("/api/instances/{slug}/launch", response_class=HTMLResponse)
 async def launch_instance(slug: str, background_tasks: BackgroundTasks):
+    # Only launching requires sign-in. If not logged in, show an inline prompt.
+    settings = get_settings()
+    status = _auth_status(settings)
+    if not status.get("logged_in"):
+        html = (
+            '<div class="text-amber-300 text-sm">'
+            'Sign in with your Microsoft account to launch Minecraft. '
+            '<a href="/auth/login" class="underline">Sign in</a> '
+            'or manage accounts in <a href="/settings" class="underline">Settings</a>.'
+            '</div>'
+        )
+        return HTMLResponse(content=html)
+
     job_id = secrets.token_hex(8)
     JOBS[job_id] = {"status": "queued", "progress": 0, "message": "Queued"}
     background_tasks.add_task(_launch_instance_job, job_id, slug)
@@ -778,7 +819,7 @@ def _instance_card_html(d: Path, meta: dict) -> str:
       <div class="text-xs text-slate-500 mt-1">{created}</div>
       <div class="mt-2 text-sm text-slate-400">Install folder: <span class="font-mono">{d}</span></div>
       <form class="mt-3" hx-post="/api/instances/{slug}/launch" hx-target="#launch-progress-{slug}" hx-swap="innerHTML">
-        <button type="submit" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Launch</button>
+        <button type="submit" class="px-3 py-1.5 rounded border border-slate-700 hover:bg-slate-800" hx-swap-oob="true">Launch</button>
       </form>
       <div class="mt-2">
         <a href="/instances/{slug}" class="text-sm px-3 py-1.5 rounded border border-slate-700 hover:bg-slate-800">Manage</a>
@@ -1147,21 +1188,30 @@ def _download_best_version_file(id_or_slug: str, target_dir: Path, accept_ext: t
         versions = r.json() or []
         chosen = None
         for v in versions:
-            files = v.get("files", [])
-            for f in files:
-                fn = f.get("filename") or ""
-                url = f.get("url") or (f.get("downloads") or [None])[0]
-                if url and fn.lower().endswith(accept_ext):
-                    chosen = (url, fn)
-                    break
-            if chosen:
+            v_loaders = v.get("loaders", [])
+            v_games = v.get("game_versions", [])
+            if v_games and v_loaders:
+                chosen = v
                 break
+        if not chosen and versions:
+            chosen = versions[0]
         if not chosen:
             return False
-        url, fn = chosen
+        # Find a .jar file
+        f_url = None
+        fn_out = None
+        for f in chosen.get("files", []):
+            url = f.get("url") or (f.get("downloads") or [None])[0]
+            fn = f.get("filename") or ""
+            if url and fn.endswith(accept_ext):
+                f_url = url
+                fn_out = fn
+                break
+        if not f_url:
+            return False
         target_dir.mkdir(parents=True, exist_ok=True)
-        dest = target_dir / fn
-        with c.stream("GET", url) as resp:
+        dest = target_dir / (fn_out or ((chosen.get("version_number") or "mod") + ".jar"))
+        with c.stream("GET", f_url) as resp:
             resp.raise_for_status()
             with dest.open("wb") as f:
                 for chunk in resp.iter_bytes():
@@ -1207,8 +1257,8 @@ async def add_mod_from_modrinth(slug: str, id_or_slug: str = Form(...)):
         versions = await client.get_project_versions(id_or_slug)
     chosen = None
     for v in versions:
-        v_loaders = v.get("loaders") or []
-        v_games = v.get("game_versions") or []
+        v_loaders = v.get("loaders", [])
+        v_games = v.get("game_versions", [])
         if mc_ver and mc_ver not in v_games:
             continue
         if loader and loader not in v_loaders:
@@ -1271,3 +1321,303 @@ async def instance_detail_page(request: Request, slug: str):
   <ul class="list-disc pl-5 text-sm">{body}</ul>
 </div>'''
         return HTMLResponse(content=html, status_code=404)
+
+# Optional dependency: Microsoft account login via minecraft-launcher-lib
+try:
+    from minecraft_launcher_lib import microsoft_account as ms_account  # type: ignore
+    from minecraft_launcher_lib import exceptions as mll_exc  # type: ignore
+except Exception:  # pragma: no cover
+    ms_account = None  # type: ignore
+    mll_exc = None  # type: ignore
+
+from cryptography.fernet import Fernet
+from typing import Optional
+
+# ---- Auth secure storage helpers (encrypted at rest in ~/.cottage_launcher) ----
+AUTH_DIR = Path.home() / ".cottage_launcher"
+AUTH_DIR.mkdir(parents=True, exist_ok=True)
+KEY_PATH = AUTH_DIR / "secret.key"
+AUTH_FILE = AUTH_DIR / "auth.enc"
+
+# In-memory login flow state (PKCE)
+AUTH_FLOW: dict[str, Optional[str]] = {"state": None, "code_verifier": None, "redirect_uri": None}
+
+def _get_fernet() -> Fernet:
+    """Return a Fernet instance using a locally stored key (generated if missing)."""
+    if not KEY_PATH.exists():
+        try:
+            key = Fernet.generate_key()
+            KEY_PATH.write_bytes(key)
+            try:
+                KEY_PATH.chmod(0o600)
+            except Exception:
+                pass
+        except Exception:
+            # As a last resort, use an in-memory key that won't persist
+            return Fernet(Fernet.generate_key())
+    try:
+        key = KEY_PATH.read_bytes()
+        return Fernet(key)
+    except Exception:
+        # Key corrupted; regenerate a fresh one
+        key = Fernet.generate_key()
+        KEY_PATH.write_bytes(key)
+        return Fernet(key)
+
+def _save_auth_payload(data: dict) -> None:
+    try:
+        f = _get_fernet()
+        payload = json.dumps(data).encode("utf-8")
+        token = f.encrypt(payload)
+        AUTH_FILE.write_bytes(token)
+        try:
+            AUTH_FILE.chmod(0o600)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+def _load_auth_payload() -> Optional[dict]:
+    if not AUTH_FILE.exists():
+        return None
+    try:
+        f = _get_fernet()
+        raw = AUTH_FILE.read_bytes()
+        payload = f.decrypt(raw)
+        return json.loads(payload.decode("utf-8"))
+    except Exception:
+        return None
+
+def _delete_auth_payload() -> None:
+    try:
+        if AUTH_FILE.exists():
+            AUTH_FILE.unlink()
+    except Exception:
+        pass
+
+def _auth_status(settings) -> dict:
+    """Return current auth status. Validates refresh token if possible."""
+    out = {"enabled": bool(settings.ms_client_id), "logged_in": False}
+    if not settings.ms_client_id:
+        return out
+    data = _load_auth_payload()
+    if not data:
+        return out
+    refresh_token = data.get("refresh_token")
+    name = data.get("name")
+    uuid = data.get("id")
+    out.update({"name": name, "id": uuid, "has_minecraft": False})
+    if not (ms_account and refresh_token):
+        return out
+    try:
+        # Validate refresh token and entitlements
+        refreshed = ms_account.complete_refresh(settings.ms_client_id, None, None, refresh_token)
+        # If we got here without exceptions, the account owns Minecraft (per lib semantics)
+        out["logged_in"] = True
+        out["has_minecraft"] = True
+        # Persist updated profile and (possibly rotated) refresh token
+        if isinstance(refreshed, dict):
+            data.update({
+                "refresh_token": refreshed.get("refresh_token", refresh_token),
+                "access_token": refreshed.get("access_token"),
+                "name": refreshed.get("name", name),
+                "id": refreshed.get("id", uuid),
+            })
+            _save_auth_payload(data)
+            out.update({"name": data.get("name"), "id": data.get("id")})
+    except Exception:
+        # Invalid/expired token
+        _delete_auth_payload()
+        out.update({"logged_in": False, "has_minecraft": False})
+    return out
+
+def _render_account_card_html(status: dict) -> str:
+    if not status.get("enabled"):
+        return (
+            '<div class="text-sm text-amber-400">Microsoft login is not configured. '
+            'Set <span class="font-mono">MS_CLIENT_ID</span> in your .env to enable sign-in.</div>'
+        )
+    if status.get("logged_in"):
+        name = status.get("name") or "Player"
+        uuid = status.get("id") or ""
+        return f'''
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-medium">Signed in as <span class="font-mono">{name}</span></div>
+            <div class="text-xs text-slate-400">UUID: <span class="font-mono">{uuid}</span></div>
+          </div>
+          <form hx-post="/auth/logout" hx-target="#account-panel" hx-swap="innerHTML">
+            <button type="submit" class="px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-sm">Sign out</button>
+          </form>
+        </div>
+        '''
+    else:
+        return (
+            '<div class="flex items-center justify-between">'
+            '<div class="text-sm text-slate-300">Not signed in</div>'
+            '<a href="/auth/login" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm">Sign in with Microsoft</a>'
+            '</div>'
+        )
+
+# ---------------- Microsoft Account Login & UI ----------------
+
+@router.get("/auth/login")
+async def auth_login(request: Request):
+    settings = get_settings()
+    if not settings.ms_client_id:
+        return HTMLResponse('<div class="text-amber-400">MS_CLIENT_ID is not configured.</div>', status_code=500)
+    if not ms_account:
+        return HTMLResponse('<div class="text-amber-400">minecraft-launcher-lib is not available.</div>', status_code=500)
+    redirect_uri = f"http://localhost:{settings.app_port}/auth/callback"
+    try:
+        login_url, state, code_verifier = ms_account.get_secure_login_data(settings.ms_client_id, redirect_uri)
+        AUTH_FLOW["state"] = state
+        AUTH_FLOW["code_verifier"] = code_verifier
+        AUTH_FLOW["redirect_uri"] = redirect_uri
+        return RedirectResponse(login_url, status_code=302)
+    except Exception as e:
+        return HTMLResponse(f'<div class="text-rose-400">Failed to start login: {str(e)}</div>', status_code=500)
+
+@router.get("/auth/callback")
+async def auth_callback(request: Request):
+    settings = get_settings()
+    if not settings.ms_client_id or not ms_account:
+        return HTMLResponse('<div class="text-amber-400">Login is not available.</div>', status_code=500)
+    # Parse auth code and verify state
+    try:
+        params = request.query_params
+        code = params.get("code")
+        state = params.get("state")
+        expected_state = AUTH_FLOW.get("state")
+        if not code:
+            raise ValueError("Missing 'code' in callback URL")
+        if expected_state and state != expected_state:
+            raise AssertionError("State mismatch; please try signing in again")
+        redirect_uri = AUTH_FLOW.get("redirect_uri") or f"http://localhost:{settings.app_port}/auth/callback"
+        # Complete login with PKCE using the stored redirect_uri
+        try:
+            data = ms_account.complete_login(settings.ms_client_id, None, redirect_uri, code, AUTH_FLOW.get("code_verifier"))
+        except Exception as e:
+            # Map known library exceptions to friendly messages
+            if mll_exc:
+                if isinstance(e, getattr(mll_exc, "AzureAppNotPermitted", tuple())):
+                    msg = (
+                        "Your Azure App is not permitted to use the Minecraft API yet. "
+                        "Submit the permission form referenced in the minecraft-launcher-lib docs, then retry."
+                    )
+                    return HTMLResponse(f'<div class="text-rose-400 p-4">Login failed: {msg}</div>', status_code=400)
+                if isinstance(e, getattr(mll_exc, "AccountNotOwnMinecraft", tuple())):
+                    msg = "This Microsoft account does not own Minecraft. Please use an account that owns the game."
+                    return HTMLResponse(f'<div class="text-rose-400 p-4">Login failed: {msg}</div>', status_code=400)
+                if isinstance(e, getattr(mll_exc, "InvalidRefreshToken", tuple())):
+                    msg = "Invalid or expired refresh token. Please sign in again."
+                    return HTMLResponse(f'<div class="text-rose-400 p-4">Login failed: {msg}</div>', status_code=400)
+            # Re-raise to be handled by generic error processing below
+            raise
+        # Validate response contains tokens
+        if not isinstance(data, dict) or not data.get("access_token") or not data.get("refresh_token"):
+            raise KeyError("access_token")
+        # Persist refresh token + profile (encrypted)
+        if isinstance(data, dict):
+            payload = {
+                "refresh_token": data.get("refresh_token"),
+                "access_token": data.get("access_token"),
+                "name": data.get("name"),
+                "id": data.get("id"),
+            }
+            _save_auth_payload(payload)
+        # Clear flow state
+        AUTH_FLOW["state"] = None
+        AUTH_FLOW["code_verifier"] = None
+        AUTH_FLOW["redirect_uri"] = None
+        # Friendly success page (user is in system browser)
+        html = (
+            '<div class="max-w-xl mx-auto mt-10 p-6 rounded border border-slate-300">'
+            '<div class="text-xl font-semibold">Signed in successfully</div>'
+            '<div class="mt-2 text-slate-700">You can now return to Cottage Launcher. This window can be closed.</div>'
+            '<div class="mt-4"><a href="/settings" class="px-3 py-1.5 rounded bg-emerald-600 text-white">Go to Settings</a></div>'
+            '</div>'
+        )
+        return HTMLResponse(html)
+    except KeyError:
+        # Common case: access_token missing if Azure app isn't permitted for Minecraft API (or not public client)
+        try:
+            print("[Auth] Callback access_token missing; ensure Azure app is public client and approved for Minecraft API.")
+        except Exception:
+            pass
+        msg = (
+            "Your Azure application could not obtain an access token. "
+            f"Ensure it is configured as a Public client with redirect http://localhost:{settings.app_port}/auth/callback "
+            "and that it has been granted access to the Minecraft API."
+        )
+        return HTMLResponse(
+            f'<div class="text-rose-400 p-4">Login failed: {msg}<div class="mt-3"><a class="underline" href="/auth/login">Try again</a></div></div>',
+            status_code=400,
+        )
+    except Exception as e:
+        # Log server-side for diagnostics
+        try:
+            print("[Auth] Callback error:", repr(e))
+            if settings.dev_mode:
+                print("[Auth] Stored state:", AUTH_FLOW)
+                print("[Auth] Callback params:", dict(request.query_params))
+        except Exception:
+            pass
+        return HTMLResponse(f'<div class="text-rose-400 p-4">Login failed: {e}<div class="mt-3"><a class="underline" href="/auth/login">Try again</a></div></div>', status_code=400)
+
+@router.get("/auth/status")
+async def auth_status():
+    settings = get_settings()
+    status = _auth_status(settings)
+    return JSONResponse(status)
+
+@router.post("/auth/logout", response_class=HTMLResponse)
+async def auth_logout():
+    settings = get_settings()
+    _delete_auth_payload()
+    status = _auth_status(settings)
+    return HTMLResponse(_render_account_card_html(status))
+
+@router.get("/auth/banner", response_class=HTMLResponse)
+async def auth_banner():
+    settings = get_settings()
+    status = _auth_status(settings)
+    if status.get("logged_in"):
+        return HTMLResponse("")
+    # Dismissible top banner
+    html = (
+        '<div class="bg-amber-500/20 border-b border-amber-600/40 text-amber-200 text-sm">'
+        '<div class="max-w-7xl mx-auto px-4 py-2 flex items-center justify-between">'
+        '<div>Not signed in. Some features may be limited. Please sign in with your Microsoft account.</div>'
+        '<a href="/auth/login" class="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white">Sign in</a>'
+        '</div>'
+        '</div>'
+    )
+    return HTMLResponse(html)
+
+@router.get("/auth/popup", response_class=HTMLResponse)
+async def auth_popup():
+    settings = get_settings()
+    status = _auth_status(settings)
+    if status.get("logged_in"):
+        return HTMLResponse("")
+    html = (
+        '<div class="fixed inset-0 z-50 flex items-center justify-center">'
+        '  <div class="absolute inset-0 bg-black/60" onclick="this.parentElement.remove()"></div>'
+        '  <div class="relative bg-slate-800 border border-slate-700 rounded-lg p-5 w-[28rem] shadow-xl">'
+        '    <div class="text-lg font-semibold">Sign in required</div>'
+        '    <div class="mt-2 text-sm text-slate-300">To download and launch modpacks, please sign in with your Microsoft account that owns Minecraft.</div>'
+        '    <div class="mt-4 flex items-center justify-end gap-2">'
+        '      <button class="text-xs px-2 py-1 rounded border border-slate-600 hover:bg-slate-700" onclick="document.getElementById(\'auth-modal\').remove()">Later</button>'
+        '      <a href="/auth/login" class="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white">Sign in</a>'
+        '    </div>'
+        '  </div>'
+        '</div>'
+    )
+    return HTMLResponse(html)
+
+@router.get("/settings/account-panel", response_class=HTMLResponse)
+async def settings_account_panel():
+    settings = get_settings()
+    status = _auth_status(settings)
+    return HTMLResponse(_render_account_card_html(status))

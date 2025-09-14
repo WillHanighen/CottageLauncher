@@ -1,11 +1,14 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from typing import Optional
 
 class Settings(BaseSettings):
     app_host: str = "127.0.0.1"
     app_port: int = 8000
     dev_mode: bool = False
+
+    # Microsoft OAuth Client ID for launcher login (Public client/native app)
+    ms_client_id: Optional[str] = None
 
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/cottage_launcher"

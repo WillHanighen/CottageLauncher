@@ -14,3 +14,4 @@ uvloop==0.20.0; sys_platform != "win32"
 httptools==0.6.1
 python-multipart==0.0.20
 minecraft-launcher-lib>=6.0,<7.0
+cryptography>=42,<44
