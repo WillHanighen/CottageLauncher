@@ -3,10 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "main": "main.js",
+  "build": {
+    "appId": "com.cottage.launcher",
+    "productName": "Cottage Launcher",
+    "files": [
+      "main.js",
+      "!node_modules/.cache"
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Game",
+      "artifactName": "CottageLauncher-${version}.${ext}"
+    }
+  },
   "scripts": {
-    "start": "electron . --no-sandbox"
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "build:linux": "electron-builder -l AppImage",
+    "dist": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^38.1.0"
+    "electron": "^38.1.0",
+    "electron-builder": "^24.13.3"
   }
 }

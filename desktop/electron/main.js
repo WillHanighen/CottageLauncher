@@ -4,12 +4,19 @@ function createWindow() {
   const url = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
   const isDev = process.env.DEV_MODE === 'true';
 
+  // Command-line switches for Chromium
+  app.commandLine.appendSwitch('disable-features', 'TranslateUI,site-per-process,OutOfBlinkCors');
+  app.commandLine.appendSwitch('disable-site-isolation-trials');
+  app.commandLine.appendSwitch('disable-http-cache');
+
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      enableRemoteModule: false,
+      sandbox: true
     }
   });
 
@@ -17,8 +24,16 @@ function createWindow() {
     // In production: remove menu completely
     Menu.setApplicationMenu(null);
   }
-  // In dev: keep default menu so keyboard shortcut works
-  
+
+  // Security hardening: block external navigation + popups
+  win.webContents.on('will-navigate', (event, navUrl) => {
+    if (!navUrl.startsWith(process.env.BACKEND_URL)) {
+      event.preventDefault();
+    }
+  });
+
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
   win.loadURL(url);
 }
 

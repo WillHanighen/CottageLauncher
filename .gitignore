@@ -40,6 +40,15 @@ desktop/electron/yarn.lock
 desktop/electron/pnpm-lock.yaml
 desktop/electron/dist/
 desktop/electron/out/
+desktop/electron/node
+node
+node_modules
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+#release
+release/
 
 
 #temp/legacy issue cleanup

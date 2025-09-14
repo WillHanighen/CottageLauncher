@@ -18,15 +18,16 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from app.config import get_settings
+from app.main import app as fastapi_app
 
 
 def run_server(host: str, port: int):
     uvicorn.run(
-        "app.main:app",
+        fastapi_app,
         host=host,
         port=port,
         log_level="info",
-        # Reload cannot run in a background thread (uses OS signals). Musb be False.
+        # Reload cannot run in a background thread (uses OS signals). Must be False.
         reload=False,
     )
 
@@ -77,6 +78,7 @@ def main():
     parser.add_argument("--port", type=int, default=0, help="Port for the server (0 chooses a random free port)")
     parser.add_argument("--url", default=None, help="Override URL to open in frontend (e.g., http://127.0.0.1:8000)")
     parser.add_argument("--electron-dir", default=str(ROOT_DIR / "desktop" / "electron"), help="Path to the Electron app directory (should contain package.json)")
+    parser.add_argument("--electron-binary", default=None, help="Path to a packaged Electron binary (e.g., AppImage) to launch instead of development Electron")
     parser.add_argument("--frontend", choices=["electron", "browser"], default="electron", help="Frontend to launch (default: electron)")
     args = parser.parse_args()
 
@@ -104,6 +106,18 @@ def main():
 
     # Launch Electron or fallback to system browser
     if args.frontend == "electron":
+        # Prefer packaged Electron binary if provided
+        if args.electron_binary:
+            try:
+                env = os.environ.copy()
+                env["BACKEND_URL"] = sys_url
+                env["DEV_MODE"] = str(settings.dev_mode).lower()
+                env["ELECTRON_DISABLE_SANDBOX"] = "1"
+                print(f"[Wrapper] Launching packaged Electron binary: {args.electron_binary} with URL {sys_url} (DEV_MODE={env['DEV_MODE']})")
+                code = subprocess.Popen([args.electron_binary], env=env).wait()
+                sys.exit(code if isinstance(code, int) else 0)
+            except Exception as e:
+                print(f"[Wrapper] Failed to launch packaged Electron binary: {e}. Falling back to development Electron.")
         electron_dir = Path(args.electron_dir)
         if electron_dir.exists():
             code = launch_electron_app(sys_url, electron_dir)
@@ -113,7 +127,6 @@ def main():
                 print(f"[Wrapper] Electron exited with code {code}. Falling back to system browser.")
         else:
             print(f"[Wrapper] Electron directory not found at {electron_dir}. Falling back to system browser.")
-
     webbrowser.open(sys_url)
 
 

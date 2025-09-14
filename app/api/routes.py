@@ -19,6 +19,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 import httpx
+import sys
+
 try:
     from minecraft_launcher_lib import install as mll_install
     from minecraft_launcher_lib import command as mll_command
@@ -47,7 +49,11 @@ from app.services.modrinth import ModrinthClient
 
 router = APIRouter()
 
-TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+# Resolve templates directory; handle PyInstaller onefile via sys._MEIPASS
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    TEMPLATES_DIR = Path(sys._MEIPASS) / "app" / "templates"
+else:
+    TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Simple in-memory job tracking and instance directory

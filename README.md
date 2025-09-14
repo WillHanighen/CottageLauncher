@@ -84,6 +84,56 @@ python desktop/wrapper.py --no-server --host 127.0.0.1 --port 8000
 python desktop/wrapper.py --frontend browser
 ```
 
+## Release (Linux)
+
+This repo includes a release script that builds production artifacts for users who don't want to install dependencies.
+
+Artifacts produced:
+
+- `release/CottageLauncher-<version>-linux-x64/`
+  - `cottage-launcher` (single-file backend + wrapper binary)
+  - `CottageLauncher-<version>.AppImage` (Electron front-end)
+  - `run.sh` (launches both together)
+  - `sha256sums.txt`
+- `release/CottageLauncher-<version>-linux-x64.tar.gz` (packed bundle)
+
+Where `<version>` comes from `desktop/electron/package.json` unless overridden.
+
+Prerequisites:
+
+- Python 3.9+
+- Node.js + npm
+
+Build the release:
+
+```bash
+# From repo root
+python tools/release.py
+```
+
+Flags:
+
+- `--skip-electron` — build only backend binary
+- `--skip-backend` — build only Electron AppImage
+- `--output-dir DIR` — place artifacts under a custom directory (default: `release/`)
+- `--version X.Y.Z` — override version used for artifact names
+
+What end users do:
+
+```bash
+# On a Linux machine
+# 1) Extract: (example bundle name shown)
+tar -xzf CottageLauncher-<version>-linux-x64.tar.gz
+cd CottageLauncher-<version>-linux-x64
+# 2) Run the launcher (starts backend and the Electron App)
+./run.sh
+```
+
+Notes:
+
+- The backend listens on `127.0.0.1:<random free port>` and the Electron app connects via `BACKEND_URL` env.
+- The app bundles its own UI assets and dynamically downloads a matching Temurin JRE per instance at first launch.
+
 ## How it works
 
 - Installed instances live under `~/.cottage_launcher/instances/<slug>/`.
